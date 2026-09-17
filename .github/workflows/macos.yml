@@ -18,7 +18,9 @@ jobs:
         run: ./build-macos.sh --package
       - name: Verify architectures and archive
         run: |
-          lipo -verify_arch arm64 x86_64 build/macos/PokeStroller.app/Contents/MacOS/PokeStroller
+          binary_archs="$(lipo -archs build/macos/PokeStroller.app/Contents/MacOS/PokeStroller)"
+          [[ " $binary_archs " == *" arm64 "* ]]
+          [[ " $binary_archs " == *" x86_64 "* ]]
           codesign --verify --strict build/macos/PokeStroller.app
           cd dist
           shasum -a 256 -c SHA256SUMS

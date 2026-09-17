@@ -21,7 +21,10 @@ for arch in "${architectures[@]}"; do
         -framework Cocoa -o "$task_obj/PokeStroller"
     task_binaries+=("$task_obj/PokeStroller")
 done
-xcrun lipo -create "${task_binaries[@]}" -output "$task_app/Contents/MacOS/PokeStroller"
+xcrun lipo -create "${task_binaries[@]}" -output "$task_build_dir/PokeStroller.universal"
+# Replace the executable's inode so rebuilding does not rewrite a running app's
+# mapped code pages (which would invalidate that process's code signature).
+mv "$task_build_dir/PokeStroller.universal" "$task_app/Contents/MacOS/PokeStroller"
 cp macos/Info.plist "$task_app/Contents/Info.plist"
 cp LICENSE "$task_app/Contents/Resources/LICENSE"
 cp docs/MACOS.md "$task_app/Contents/Resources/LISEZ-MOI.md"
