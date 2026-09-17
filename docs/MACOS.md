@@ -1,109 +1,163 @@
-# PokeStroller sur macOS
+# PokeStroller 0.3 sur macOS
 
-Port natif Cocoa du projet [jpcerrone/pokestroller](https://github.com/jpcerrone/pokestroller),
-basé sur la révision `8a7b85df005649f61bc3cc2e8aac821fd26a787a`.
+Interface native Cocoa de [PokeStroller](https://github.com/jpcerrone/pokestroller),
+avec le cœur H8 et les périphériques de
+[PocketWalker](https://github.com/h4lfheart/pocketwalker). La révision importée,
+la licence GPL-3.0 et les modifications sont décrites dans
+[UPSTREAM.md](../third_party/pocketwalker/UPSTREAM.md).
 
 ## Démarrage
 
-Ouvrez `PokeStroller.app`, puis **Ouvrir…**. Sélectionnez votre ROM puis votre EEPROM,
-à leur emplacement d'origine. Il n'est pas nécessaire de les renommer ou de les
-copier dans le projet ou dans l'application.
+Ouvrez `PokeStroller.app`, puis **Ouvrir…** et sélectionnez votre ROM et votre
+EEPROM à leur emplacement d'origine. Aucun renommage ni déplacement nécessaire.
 
-- ROM : 49 152 octets (48 Kio), ou dump de l'espace mémoire de 65 536 octets.
-  Dans ce second cas, seuls les premiers 48 Kio servent de ROM.
-- EEPROM : exactement 65 536 octets (64 Kio).
-- Les images sont lues en binaire et leur taille est contrôlée avant le démarrage.
-  Une erreur de chargement conserve la session déjà ouverte.
-
-L'application ne contient aucun fichier Nintendo. Elle conserve les fichiers
-sélectionnés à leur emplacement, les ouvre uniquement en lecture et ne les
-copie pas sur disque. L'émulation utilise une copie **en mémoire vive**.
+- ROM : 49 152 octets, ou dump mémoire de 65 536 octets dont seuls les premiers
+  48 Kio servent de ROM.
+- EEPROM : exactement 65 536 octets.
+- Les originaux sont ouverts en lecture uniquement. Aucun dump n'est inclus dans
+  le dépôt, l'application ou l'archive. La ROM reste seulement en mémoire vive.
+- Les sessions modifiées sont enregistrées séparément dans Application Support.
 
 ## Commandes
 
-| Action | Clavier |
+| Action | Commande |
 | --- | --- |
-| Bouton gauche | Z ou flèche gauche |
-| Bouton central, réveiller, valider | Espace ou Entrée |
-| Bouton droit | X ou flèche droite |
-| Ouvrir une paire de fichiers | ⌘O |
+| Gauche / droite | Z / X, ou flèches gauche / droite |
+| Réveiller / valider | Espace ou Entrée ; maintenir pour réveiller l'écran |
+| Ouvrir les fichiers | ⌘O |
 | Pause / reprendre | ⌘P |
+| Activer / arrêter la marche | bouton Marcher, ou ⌘M |
 | Exporter l'EEPROM | ⌘S |
-| Recharger les fichiers sélectionnés | ⌘R |
+| Redémarrer avec la sauvegarde automatique | ⌘R |
 | Quitter | ⌘Q |
 
-Les trois boutons sous l'écran sont également cliquables. L'affichage conserve
-les pixels du LCD 96 × 64 et s'agrandit par multiples entiers. Agrandissez la
-fenêtre pour augmenter l'échelle.
+Les boutons sont également cliquables. Le bouton central simule une pression
+assez longue pour réveiller l'écran. Le clavier gère l'appui et le relâchement,
+y compris après un changement de fenêtre. Le LCD 96 × 64 s'agrandit par multiples
+entiers. L'extinction de l'écran après inactivité est normale : la marche continue.
 
-## Sauvegarder une session
+## Marche, son et horloge
 
-**Fichier → Exporter l'EEPROM…** écrit l'état courant dans un fichier de votre
-choix, de façon atomique. Sélectionnez un nouveau nom, par exemple
-`eeprom-session.bin`, hors du dépôt. L'application refuse d'écraser un fichier
-ROM ou EEPROM chargé pendant la session (y compris via un lien symbolique ou
-un lien physique).
+**Marcher** injecte des échantillons d'accéléromètre. Le firmware compte les pas
+et attribue les watts. La cadence obtenue est proche de deux pas par seconde,
+après quelques secondes de détection. Arrêter la marche peut laisser quelques
+pas déjà engagés dans le filtre du firmware. La pause suspend les pas simulés.
 
-Il n'y a pas d'écriture automatique dans l'EEPROM d'origine. À la fermeture ou
-au rechargement, l'application propose d'exporter les modifications. Pour
-reprendre, ouvrez votre ROM avec l'EEPROM exportée. Ce n'est pas une sauvegarde
-instantanée du CPU : le firmware redémarre avec les données persistantes.
+Le menu **Son** active la sortie audio et règle son volume. Il faut aussi activer
+le son dans les **Réglages du PokéWalker**, à l'intérieur de son écran : un dump
+provenant d'un appareil muet conserve ce réglage. Le buzzer est synthétisé à
+32 kHz ; son timbre reste une approximation numérique du composant physique.
 
-## Compiler
+L'horloge suit l'heure locale du Mac. Les registres RTC et les interruptions de
+quart de seconde, demi-seconde, seconde, minute et changement de jour sont
+émulés. Les changements de jour sont traités par le firmware. Les pas ne sont
+pas rattrapés après une pause, une boîte de dialogue ou la veille du Mac.
 
-Prérequis : macOS 11 ou plus récent et les outils de compilation Apple
-(`xcode-select --install` si absents). Aucun paquet Homebrew n'est nécessaire.
+## Sauvegardes automatiques
 
-```sh
-./build-macos.sh
-open build/macos/PokeStroller.app
+L'EEPROM de session est sauvegardée toutes les cinq secondes d'exécution, ainsi
+qu'à la pause, au rechargement et à la fermeture. Ouvrir de nouveau la même paire
+ROM/EEPROM reprend automatiquement cette sauvegarde.
+
+Emplacement :
+
+```text
+~/Library/Application Support/PokeStroller/Sessions/<identifiant>/session.pws
 ```
 
-Le script produit une application universelle **Apple Silicon + Intel**. Pour
-compiler seulement pour Apple Silicon : `ARCHS=arm64 ./build-macos.sh`.
+**Fichier → Dossier des sauvegardes** ouvre le dossier correspondant. L'identifiant
+dépend du contenu initial des fichiers et du profil ; déplacer les originaux ne
+change donc pas la session. Le format `.pws` contient l'EEPROM et une empreinte de
+contrôle, jamais la ROM. Une copie `previous.pws` permet de récupérer l'écriture
+précédente si la dernière est corrompue. Les écritures sont atomiques et un verrou
+empêche deux instances d'écraser simultanément le même profil.
 
-Pour créer l'archive locale et son empreinte SHA-256 :
+Le firmware connu conserve ses compteurs et réglages récents dans un cache RAM.
+L'export synchronise ce cache dans les deux blocs HealthData de l'EEPROM, avec
+leur contrôle d'intégrité. Cela préserve notamment les watts gagnés depuis la
+dernière écriture effectuée par le jeu. Cette adaptation est limitée à la ROM
+reconnue ; une autre version conserve l'export brut de son EEPROM.
+
+Ce format n'est pas un instantané du CPU. Le firmware redémarre ; une animation,
+une rencontre ou le compteur volatile de la session en cours ne reprennent pas
+à l'instruction exacte. Les données persistantes, dont les watts et les pas
+cumulés, sont conservées.
+
+En cas d'échec d'écriture, l'application met la session en pause et permet un
+export manuel. Si la sauvegarde et sa copie sont toutes deux illisibles, elles
+restent intactes : utilisez un nouveau profil ou une exportation antérieure.
+
+**Fichier → Exporter l'EEPROM…** produit un fichier brut de 64 Kio, compatible
+avec le chargement de l'émulateur. Les fichiers d'entrée de la session sont
+protégés contre l'écrasement, même via un lien symbolique ou physique.
+
+## Infrarouge virtuel
+
+Le menu **Infrarouge** configure une liaison TCP entre émulateurs. Aucun matériel
+infrarouge physique ou Flipper Zero n'est utilisé. Le transport est un flux brut
+d'octets, comme dans PocketWalker ; le firmware réalise le protocole du jeu.
+
+1. Sur la première instance, choisir **Attendre une connexion locale…**, port
+   `31337` par exemple. L'écoute est limitée à `127.0.0.1`.
+2. Sur la seconde, choisir **Se connecter…**, avec `127.0.0.1:31337`.
+3. Choisir **Connexion** dans les menus des deux PokéWalker. Les deux jeux doivent
+   être actifs ; une pause ou une boîte de dialogue peut faire expirer l'échange.
+4. **Déconnecter** coupe le transport et vide les données en attente.
+
+Pour ouvrir une seconde instance indépendante :
 
 ```sh
-./build-macos.sh --package
+open -n build/macos/PokeStroller.app --args --profile second
 ```
 
-Les artefacts sont dans `build/macos/` et `dist/`, exclus de Git. La signature
-est **ad hoc**, pour une utilisation locale : ni signature Developer ID, ni
-notarisation Apple. Une application téléchargée peut donc être bloquée par
-Gatekeeper. La compiler localement est le chemin pris en charge.
+Un profil séparé évite les conflits de sauvegarde ; il ne transforme pas l'identité
+Nintendo d'une EEPROM. Pour une rencontre normale, utiliser deux identités de
+PokéWalker distinctes. Le client accepte une adresse IPv4 explicite ; le serveur
+inclus accepte uniquement les connexions locales.
 
-Les chemins peuvent aussi être fournis explicitement, y compris avec des espaces :
+Une version de melonDS intégrant un serveur TCP IR compatible peut utiliser ce
+transport. Le melonDS standard et une vraie Nintendo DS ne sont pas pris en
+charge par cette connexion. Aucune validation avec un jeu DS n'a été réalisée.
 
-```sh
-open build/macos/PokeStroller.app --args \
-  --rom "/chemin/vers/ma-rom.bin" \
-  --eeprom "/chemin/vers/mon-eeprom.bin"
-```
+## Compiler et tester
 
-L'application doit être fermée avant un nouveau lancement avec des arguments.
-
-## Limites du cœur d'émulation
-
-Ce port conserve le cœur expérimental de PokeStroller. Il ne simule pas encore
-l'infrarouge, le son ou la marche / l'accéléromètre. Les interruptions périodiques
-sont exécutées, mais cela ne constitue pas une horloge RTC complète synchronisée
-avec macOS. Le défaut Poké Radar signalé en amont n'est pas considéré résolu.
-
-Le cœur contient des adresses et adaptations spécifiques au firmware connu.
-La validation de taille ne garantit pas la compatibilité d'une autre révision
-de ROM. Une opération non implémentée suspend l'émulation avec son adresse,
-au lieu de fermer silencieusement l'application.
-
-## Tests sans ROM redistribuée
+Prérequis : macOS 11 ou ultérieur, outils Apple récents avec C++23
+(Xcode 15 / Command Line Tools 15 ou ultérieurs). Aucun paquet Homebrew ni Qt.
 
 ```sh
 ./tests/run-tests.sh
+./tests/run-native-tests.sh
+./build-macos.sh --package
+open build/macos/PokeStroller.app
 ```
 
-Les tests créent uniquement des images synthétiques dans un dossier temporaire.
-Ils vérifient les entrées, les tailles, les rechargements, la copie de l'EEPROM
-et les accès mémoire aux limites, avec AddressSanitizer et UndefinedBehaviorSanitizer.
-Les vrais dumps restent hors du dépôt et des artefacts de distribution.
+La compilation produit un binaire universel Apple Silicon + Intel. Pour seulement
+Apple Silicon : `ARCHS=arm64 ./build-macos.sh`. L'archive et son empreinte SHA-256
+se trouvent dans `dist/`, exclu de Git. La signature est ad hoc, sans signature
+Developer ID ni notarisation Apple ; la compilation locale est le parcours pris
+en charge.
 
-La licence du projet et de ce port est GPL-3.0 ; voir `LICENSE`.
+Lancement avec chemins explicites, application fermée :
+
+```sh
+open build/macos/PokeStroller.app --args \
+  --rom "/chemin/vers/ma-rom.bin" --eeprom "/chemin/vers/mon-eeprom.bin"
+```
+
+`--profile nom` sélectionne une session indépendante. `--save-dir /chemin`
+change le dossier des sauvegardes, notamment pour les tests temporaires.
+
+Les tests automatiques utilisent des données synthétiques et les sanitizers.
+Un test facultatif lit des dumps personnels extérieurs au dépôt ; il active le
+son uniquement dans sa copie en RAM pour vérifier la synthèse :
+
+```sh
+./tests/run-native-tests.sh "/chemin/ROM.bin" "/chemin/EEPROM.bin"
+```
+
+Ce dernier scénario suppose une EEPROM appairée avec un Pokémon et au moins
+10 watts disponibles. Il ne modifie pas les fichiers fournis. Les parcours testés
+et les limites de validation figurent dans [VALIDATION.md](VALIDATION.md).
+
+Le frontend Windows conserve le cœur C historique et ses limitations. Les six
+fonctions de cette version concernent le port macOS.

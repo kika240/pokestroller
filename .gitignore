@@ -23,3 +23,7 @@ private/
 *.o
 *.dSYM/
 .DS_Store
+
+# Native session containers belong in Application Support, never in Git
+*.pws
+*.trace

@@ -1,55 +1,79 @@
-# Validation du port macOS — 17 septembre 2026
+# Validation macOS 0.3.0 — 17 septembre 2026
 
-Base amont : `jpcerrone/pokestroller`, révision
+Base historique : `jpcerrone/pokestroller` à la révision
 `8a7b85df005649f61bc3cc2e8aac821fd26a787a`.
+Cœur natif : `h4lfheart/pocketwalker` à la révision
+`2f3b4512a668e3b7c321f213c1c8d5344627e96e`, avec les corrections documentées
+[dans la notice](../third_party/pocketwalker/UPSTREAM.md).
 
-## Résultats locaux
+## Résultats
 
-| Vérification | Résultat |
+| Vérification | Résultat observé |
 | --- | --- |
-| Compilation Apple Clang, SDK macOS 27, cible minimale macOS 11 | Réussie |
-| Binaire universel `arm64` + `x86_64` | Deux architectures présentes |
-| Vérification du bundle et de sa signature ad hoc | Réussie |
-| Tests synthétiques AddressSanitizer + UndefinedBehaviorSanitizer | Réussis |
-| Dump personnel : démarrage, réveil, 30 secondes simulées | Réussi, 110 592 000 cycles, 56 changements d'image |
-| Dump personnel : séquence de navigation, 30 secondes simulées | Réussi, 110 592 000 cycles, 110 changements d'image |
-| Dump personnel : séquence de boutons prolongée, 60 secondes simulées | Réussi, 221 184 000 cycles, 129 changements d'image |
-| Dump personnel : autre séquence de boutons, 30 secondes simulées | Réussi, 110 592 000 cycles, 96 changements d'image |
-| Build optimisé `-O2` : même test de démarrage | Même empreinte de trame finale que le build instrumenté |
-| Interface Cocoa sur Apple Silicon | Accueil animé, menu et entrée dans Poké Radar observés |
-| Pause et dialogue d'export | Accessibles dans l'application |
-| Fichiers d'entrée après les tests | Empreintes SHA-256 inchangées |
+| Compilation Apple Clang / SDK macOS 27, minimum macOS 11 | Réussie, arm64 et x86_64 |
+| Signature ad hoc et archive SHA-256 | Vérifiées |
+| Régressions du cœur C historique | Réussies sous ASan / UBSan |
+| Régressions du nouveau cœur | Arithmétique 8/16/32 bits, flags, multiplication signée, accès désalignés et erreur CPU récupérable |
+| RTC | Passage 23:59:59 → 00:00:00, BCD, PM et interruptions minute/heure/jour ; aucune fausse transition au premier tick |
+| Buzzer | Exactement 32 000 échantillons par seconde simulée, fréquence de test 1 kHz |
+| TCP / SCI3 | 120 000 octets bidirectionnels, octet transmis entre deux SCI3, fermeture distante |
+| Sauvegardes | Écriture / reprise, isolation des profils, verrou exclusif et restauration après corruption |
+| ROM personnelle / Poké Radar | Choix du mauvais buisson, message « Il est parti… », puis retour sans erreur |
+| ROM personnelle / marche | 0 → 68 pas dans le scénario ; attribution des watts par le firmware |
+| ROM personnelle / audio | 1 744 000 échantillons, dont 46 317 non nuls dans le scénario instrumenté |
+| ROM personnelle / reprise EEPROM | 1 957 watts avant fermeture et après redémarrage |
+| Rencontre entre deux cœurs via TCP | 1 656 et 1 621 octets envoyés ; compteurs de réception correspondants, animation de rencontre, cadeau enregistré sur les deux appareils |
+| Interface Cocoa sur Apple Silicon | Affichage, commandes et marche observés ; compteur à 226 pas, pause et sauvegarde effective dans Application Support |
+| Fichiers d'entrée | SHA-256 inchangés après les tests |
 
-Les tests synthétiques couvrent notamment le rechargement après erreur, les
-fichiers absents / tronqués / trop grands, la réutilisation de la file de boutons,
-l'initialisation déterministe du LCD, la copie de l'EEPROM et les accès CPU en
-limite de l'espace d'adressage de 16 bits.
+Les commandes finales ont réussi :
 
-Les dumps ont été lus directement dans leur dossier extérieur au dépôt. Aucune
-ROM, EEPROM ou capture provenant de ces fichiers n'est incluse dans Git ou dans
-l'application. Les captures de contrôle du cœur ont été écrites uniquement
-dans le dossier temporaire du système.
+```sh
+./tests/run-tests.sh
+./tests/run-native-tests.sh "/chemin/ROM.bin" "/chemin/EEPROM.bin" "/dossier/temporaire"
+./build-macos.sh --package
+```
+
+Les régressions natives et les deux scénarios utilisant la ROM ont été exécutés
+avec AddressSanitizer et UndefinedBehaviorSanitizer, sans erreur. Le test de
+rencontre vérifie les deux inventaires de cadeaux, pas seulement l'ouverture du
+socket. Le mauvais buisson et le cadeau « Élixir en cadeau ! » ont également
+été contrôlés visuellement sur les trames produites.
+
+## Conditions des tests avec les dumps
+
+Les fichiers ont été lus directement dans leur dossier extérieur au dépôt.
+Le test sonore active le volume uniquement dans la copie en RAM de l'EEPROM,
+car le fichier d'origine désactive le son. Le test IR construit une seconde
+identité de test en RAM, avec des contrôles d'intégrité valides. Il utilise deux
+origines RTC déterministes et un décalage entre les pressions de connexion.
+Ces adaptations ne sont pas appliquées par l'application aux fichiers utilisateur.
+
+Aucune ROM, EEPROM, trace réseau ou capture issue des dumps n'est ajoutée à Git
+ou au bundle. Les captures de contrôle sont dans le dossier temporaire du système.
+L'application stocke ses sessions dans Application Support, hors du projet.
 
 ## Portée et limites
 
-- Exécution native vérifiée sur Apple Silicon avec macOS 27. Le code Intel est
-  compilé mais n'a pas été exécuté sur un Mac Intel. macOS 11 est la cible de
-  compilation, pas une version sur laquelle cette session a fait un test réel.
-- Le frontend Windows est conservé, mais n'a pas été compilé ou exécuté sur
-  Windows pendant cette validation.
-- Les séquences automatiques montrent que les parcours testés ne déclenchent
-  pas les sanitizers. Elles ne prouvent pas la justesse de toutes les
-  instructions H8 ni de tous les états des mini-jeux.
-- L'export EEPROM est une fonction du port : il sérialise la mémoire EEPROM
-  dans un fichier séparé. Le dialogue a été ouvert, mais le cycle complet
-  export / réouverture n'a pas été validé dans cette session de contrôle UI.
-- Le cœur amont reste expérimental : infrarouge, audio, accéléromètre et RTC
-  complète restent à réaliser. Le bug Poké Radar documenté en amont n'est pas
-  annoncé corrigé. Des adaptations du firmware connu, dont l'attribution de
-  watts à une adresse spécifique, restent héritées de l'émulateur original.
-- Signature ad hoc seulement ; pas de notarisation Apple ou de signature
-  Developer ID. Le build est destiné à l'utilisation et aux essais locaux.
+- Le port macOS utilise le nouveau cœur. Le frontend Windows reste sur le cœur C
+  historique ; il n'a pas été compilé ou exécuté sur Windows pendant cette session.
+- Exécution vérifiée sur Apple Silicon avec macOS 27. Intel et macOS 11 sont des
+  cibles de compilation, sans exécution sur ces configurations dans cette session.
+- L'IR a été validé entre deux cœurs avec le même transport TCP que l'application.
+  Pas de rencontre avec une Nintendo DS physique ni de test avec un jeu melonDS.
+  Les pauses, des latences importantes ou deux identités identiques peuvent faire
+  échouer une rencontre comme le signale le firmware.
+- L'EEPROM sauvegardée est un état persistant, pas un instantané CPU. Le compteur
+  quotidien volatile du firmware repart à zéro au redémarrage dans le scénario
+  testé ; les watts et le cumul de pas du cache HealthData sont conservés.
+- L'accéléromètre et le timbre du buzzer sont des simulations. Les tests ne
+  démontrent pas l'exactitude de toutes les instructions H8, de tous les timings
+  matériels ou de toutes les révisions du firmware.
+- L'export manuel utilise le même instantané EEPROM que l'autosauvegarde. Le cycle
+  de persistance a été vérifié automatiquement ; le dialogue d'export était déjà
+  accessible dans la version précédente.
+- Signature ad hoc uniquement, sans notarisation Apple ni signature Developer ID.
 
-La CI du fork construit les deux architectures et exécute les tests synthétiques
-sans avoir accès aux dumps personnels. Consulter le résultat du workflow sur
-GitHub pour connaître son état effectif.
+La CI exécute les régressions synthétiques des deux cœurs, teste la persistance et
+le transport, puis construit et vérifie le bundle universel. Elle n'a jamais accès
+aux dumps personnels ; les scénarios avec la ROM sont des validations locales.

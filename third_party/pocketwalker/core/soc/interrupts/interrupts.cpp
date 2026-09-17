@@ -1,0 +1,90 @@
+#include "interrupts.h"
+
+#include "core/cpu/cpu.h"
+#include "core/soc/defines.h"
+
+void Interrupts::RegisterIOHandlers(const std::shared_ptr<IO>& io)
+{
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_IENR1, IENR1);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_IENR1, IENR1);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_IENR2, IENR2);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_IENR2, IENR2);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_IRR1, IRR1);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_IRR1, IRR1);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_IRR2, IRR2);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_IRR2, IRR2);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_RTCFLG, RTCFLG);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_RTCFLG, RTCFLG);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_RTCCR2, RTCCR2);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_RTCCR2, RTCCR2);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_TIERW, TIERW);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_TIERW, TIERW);
+
+    IO_HANDLER_READ_UNION(INTERRUPT_ADDR_TSRW, TSRW);
+    IO_HANDLER_WRITE_UNION(INTERRUPT_ADDR_TSRW, TSRW);
+}
+
+void Interrupts::Cycle(const std::shared_ptr<CPU>& cpu)
+{
+    if (cpu->reg.flags.I)
+        return;
+
+    if (IENR1.IEN0 && IRR1.IRRI0)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_IRQ0);
+    }
+    else if (IENR1.IEN1 && IRR1.IRRI1)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_IRQ1);
+    }
+    else if (IENR1.IENRTC && RTCCR2.SEIE025 && RTCFLG.SEIFG025)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_QUARTER_SEC);
+    }
+    else if (IENR1.IENRTC && RTCCR2.SEIE05 && RTCFLG.SEIFG05)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_HALF_SEC);
+    }
+    else if (IENR1.IENRTC && RTCCR2.SEIE1 && RTCFLG.SEIFG1)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_SEC);
+    }
+    else if (IENR1.IENRTC && RTCCR2.MNIE && RTCFLG.MNIFG)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_MIN);
+    }
+    else if (IENR1.IENRTC && RTCCR2.HRIE && RTCFLG.HRIFG)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_HOUR);
+    }
+    else if (IENR1.IENRTC && RTCCR2.DYIE && RTCFLG.DYIFG)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_DAY);
+    }
+    else if (IENR1.IENRTC && RTCCR2.WKIE && RTCFLG.WKIFG)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_WEEK);
+    }
+    else if (IENR1.IENRTC && RTCCR2.FOIE && RTCFLG.FOIFG)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_RTC_FREE);
+    }
+    else if (IENR2.IENTB1 && IRR2.IRRTB1)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_TIMER_B1);
+    }
+    else if (TIERW.OVIE && TSRW.OVF)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_TIMER_W);
+    }
+    else if (TIERW.IMIEA && TSRW.IMFA)
+    {
+        cpu->Interrupt(INTERRUPT_VECTOR_ADDR_TIMER_W);
+    }
+}

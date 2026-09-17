@@ -9,7 +9,7 @@ dowsing / Poké Radar minigames. The original Windows frontend is retained.
 
 ## macOS quick start
 
-Requires macOS 11+ and Apple's Command Line Tools. No Homebrew libraries required.
+Requires macOS 11+ and Apple's Command Line Tools 15+ (C++23). No Homebrew libraries required.
 
 ```sh
 ./build-macos.sh
@@ -25,6 +25,10 @@ and 64 KiB EEPROM. Use only your own dumps.
 - Clickable buttons, pause (**⌘P**), reload (**⌘R**), and native file dialogs.
 - **⌘S** exports the emulated EEPROM to a separate file. Original input files
   are protected against overwrite. Reopen the exported EEPROM to resume later.
+- **Marcher / ⌘M** simulates steps; **Son** controls native audio output.
+- Automatic saves resume when you reopen the same original files. Sessions live
+  in Application Support, with recovery copies and independent profiles.
+- **Infrarouge** connects two instances over local TCP.
 - Native Retina rendering, integer LCD scaling, and a resizable window.
 
 `./build-macos.sh --package` also creates `dist/PokeStroller-macOS.zip` and
@@ -45,13 +49,21 @@ Place both the eeprom and rom files in the same folder as the emulator binary an
 
 Run the emulator, the buttons are controlled with `Z`, `X` and the `spacebar`.
 
-## TODO list
-- Audio.
-- IR emulation to connect to a Nintendo DS emulator or to another pokestroller instance.
-- RTC.
-- Accelerometer simulation (Step counting).
-- Automatic EEPROM saving (macOS supports explicit export to a separate file).
-- Fix pokeRadar bug that appears when clicking the wrong bush.
+## TODO list — implemented in the macOS port
+
+- [x] Audio: native 32 kHz output, mute and volume controls.
+- [x] Virtual IR: TCP connection between two emulator instances, including a
+  complete in-game encounter and gift. DS-emulator interoperability is unverified.
+- [x] RTC: local system clock, BCD registers and periodic/calendar interrupts.
+- [x] Accelerometer simulation: firmware counts synthetic steps and awards watts.
+- [x] Automatic EEPROM saving: independent profiles, atomic writes, recovery copy
+  and preservation of cached health data on the supported firmware.
+- [x] Poké Radar wrong-bush path: tested through the escape message and return.
+
+The native frontend now uses the GPL-3.0 PocketWalker core with targeted fixes;
+see [attribution](third_party/pocketwalker/UPSTREAM.md),
+[usage](docs/MACOS.md), and [validation](docs/VALIDATION.md).
+The historical Windows C backend retains its original limitations.
 
 ## Compiling
 ### Windows
@@ -72,7 +84,9 @@ An optional local smoke test can use dumps directly at their existing paths:
 
 This executes 30 seconds of emulated time, including a wake-button press, without
 writing either input. A successful smoke test is not proof of complete hardware
-emulation; the TODO list above still applies. CPU register aliases in the
+emulation. This command checks the legacy C backend; use
+`./tests/run-native-tests.sh` to check the macOS backend and peripherals.
+CPU register aliases in the
 upstream core require `-fno-strict-aliasing` with Clang/GCC.
 
 ### Linux and other systems
