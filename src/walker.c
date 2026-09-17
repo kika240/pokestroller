@@ -5,6 +5,8 @@
 #include <memory.h>
 #include <string.h>
 #include <assert.h>
+#include <stdarg.h>
+#include <errno.h>
 
 #include "definitions.h"
 #include "walker.h"
@@ -41,6 +43,12 @@ static struct Accelerometer_t accel;
 static struct Eeprom_t eeprom;
 static struct Lcd_t lcd;
 static bool sleep;
+static bool initialized;
+static uint8_t memoryStorage[MEM_SIZE];
+static uint8_t eepromStorage[WALKER_EEPROM_SIZE];
+static uint8_t accelStorage[29];
+static uint8_t lcdStorage[LCD_MEM_WIDTH * LCD_MEM_HEIGHT / 4];
+static uint32_t registers[8];
 
 uint8_t clearBit8(uint8_t operand, int bit){
 	return operand & ~(1 << bit);			
@@ -133,15 +141,15 @@ void setMemory8(uint32_t address, uint8_t value){
 void setMemory16(uint32_t address, uint16_t value){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
 	memory[address] = value >> 8; 
-	memory[address + 1] = value & 0xFF; 
+	memory[(address + 1) & 0xffff] = value & 0xFF;
 }
 
 void setMemory32(uint32_t address, uint32_t value){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
 	memory[address] = value >> 24; 
-	memory[address + 1] = (value >> 16) & 0xFF; 
-	memory[address + 2] = (value >> 8) & 0xFF; 
-	memory[address + 3] = value & 0xFF; 
+	memory[(address + 1) & 0xffff] = (value >> 16) & 0xFF;
+	memory[(address + 2) & 0xffff] = (value >> 8) & 0xFF;
+	memory[(address + 3) & 0xffff] = value & 0xFF;
 }
 
 uint16_t getMemory8(uint32_t address){
@@ -151,12 +159,15 @@ uint16_t getMemory8(uint32_t address){
 
 uint16_t getMemory16(uint32_t address){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
-	return (uint16_t)((memory[address] << 8) | (memory[address + 1]));
+	return (uint16_t)((memory[address] << 8) | memory[(address + 1) & 0xffff]);
 }
 
 uint32_t getMemory32(uint32_t address){
 	address = address & 0x0000ffff; // Keep lower 16 bits only
-	return (uint32_t)((memory[address] << 24) | (memory[address + 1] << 16) | (memory[address + 2] << 8) | memory[address + 3]);
+	return ((uint32_t)memory[address] << 24) |
+	       ((uint32_t)memory[(address + 1) & 0xffff] << 16) |
+	       ((uint32_t)memory[(address + 2) & 0xffff] << 8) |
+	       memory[(address + 3) & 0xffff];
 }
 
 // Note: I considered using signed parameters here, but they get sign extended and screw up the carry calculations.
@@ -247,7 +258,7 @@ void setFlagsSUB(uint32_t value1, uint32_t value2, int numberOfBits){
 }
 
 void setFlagsINC(uint32_t value1, uint32_t value2, int numberOfBits){
-	uint32_t negativeFlag = (1 << (numberOfBits-1));
+	uint32_t negativeFlag = (1u << (numberOfBits-1));
 	flags.N = (value1 + value2) & negativeFlag;  
 	flags.Z = ((value1 + value2) == 0) ? true : false;
 	flags.V = ~(value1 ^ value2) & ((value1 + value2) ^ value1) & negativeFlag; // If both operands have the same sign and the results is from a different sign, overflow has occured.
@@ -337,9 +348,8 @@ int runNextInstruction(uint64_t* cycleCount){
 				setMemory8(0xffde, popElement(&inputQueue));
 			}
 		}
-		uint16_t* currentInstruction = (uint16_t*)(memory + pc);
-		// IMPROVEMENT: maybe just use pointers to the ROM, left this way cause it seems cleaner
-		uint16_t ab = (*currentInstruction << 8) | (*currentInstruction >> 8); // 0xbHbL aHaL -> aHaL bHbL
+		// Read explicit big-endian bytes, including across the 16-bit address boundary.
+		uint16_t ab = getMemory16(pc);
 
 		uint8_t a = ab >> 8;
 		uint8_t aH = (a >> 4) & 0xF; 
@@ -349,7 +359,7 @@ int runNextInstruction(uint64_t* cycleCount){
 		uint8_t bH = (b >> 4) & 0xF;
 		uint8_t bL = b & 0xF;
 
-		uint16_t cd = (*(currentInstruction + 1) << 8) | (*(currentInstruction + 1) >> 8);
+		uint16_t cd = getMemory16(pc + 2);
 		uint8_t c = cd >> 8;
 		uint8_t cH = (c >> 4) & 0xF; 
 		uint8_t cL = c & 0xF;
@@ -358,7 +368,7 @@ int runNextInstruction(uint64_t* cycleCount){
 		uint8_t dH = (d >> 4) & 0xF;
 		uint8_t dL = d & 0xF;
 
-		uint16_t ef = (*(currentInstruction + 2) << 8) | (*(currentInstruction + 2) >> 8);
+		uint16_t ef = getMemory16(pc + 4);
 		uint8_t e = ef >> 8;
 		uint8_t eH = (e >> 4) & 0xF; 
 		uint8_t eL = e & 0xF;
@@ -367,7 +377,7 @@ int runNextInstruction(uint64_t* cycleCount){
 		uint8_t fH = (f >> 4) & 0xF;
 		uint8_t fL = f & 0xF;
 
-		uint32_t cdef = cd << 16 | ef;                     
+		uint32_t cdef = (uint32_t)cd << 16 | ef;
 
 		if (pc == 0x79b8) { // Hack some watts in
 			setMemory16(0xf78e, STARTING_WATTS);
@@ -2824,49 +2834,34 @@ int runNextInstruction(uint64_t* cycleCount){
 	return 0;	
 }
 
-void initWalker(){
-	memset(&inputQueue, 0 , sizeof(inputQueue));
+static void initializeWalkerImages(const uint8_t* rom, const uint8_t* image){
+	while (!isEmpty(&inputQueue)) popElement(&inputQueue);
 	int entry = 0x02C4;
 
 	sleep = false;
-	uint64_t subClockCyclesEllapsed = 0;
+	subClockCyclesEllapsed = 0;
 	
-	memory = malloc(MEM_SIZE);
+	memory = memoryStorage;
 	memset(memory, 0, MEM_SIZE);
+	memcpy(memory, rom, WALKER_ROM_SIZE);
 	
 	memset(&eeprom, 0, sizeof(eeprom));
-	eeprom.memory = malloc(EEPROM_SIZE);
-	memset(eeprom.memory, 0xFF, EEPROM_SIZE);
-
-#ifndef INIT_EEPROM
-	FILE *eepromFile = fopen("eeprom.bin", "r");
-	fread(eeprom.memory, 1, 64* 1024, eepromFile);
-	fclose(eepromFile);
-#endif
+	eeprom.memory = eepromStorage;
+	memcpy(eeprom.memory, image, WALKER_EEPROM_SIZE);
 
 	memset(&accel, 0, sizeof(accel));
-	accel.memory = malloc(29);
+	accel.memory = accelStorage;
 	memset(accel.memory, 0, 29);
 	accel.memory[0] = 0x2; // Chip id
 
 	memset(&lcd, 0, sizeof(lcd));
 	lcd.contrast = 20;
 	lcd.state = LCD_EMPTY;
-	lcd.memory = malloc(LCD_MEM_SIZE);
-
-	FILE* romFile = fopen("rom.bin","r");
-	if(!romFile){
-		printf("Can't find rom");
-	}
-
-	fseek (romFile , 0 , SEEK_END);
-	int romSize = ftell (romFile);
-	rewind (romFile);
-
-	fread(memory,1,romSize ,romFile);
-	fclose(romFile);
+	lcd.memory = lcdStorage;
+	memset(lcd.memory, 0, sizeof(lcdStorage));
 
 	// Init SSU registers
+	memset(&SSU, 0, sizeof(SSU));
 	SSU.SSCRH = &memory[0xF0E0]; 
 	SSU.SSCRL = &memory[0xF0E1]; 
 	SSU.SSMR = &memory[0xF0E2]; 
@@ -2883,7 +2878,7 @@ void initWalker(){
 	
 	// Init general purpose registers
 	for(int i=0; i < 8;i++){
-		ER[i] = malloc(4);
+		ER[i] = &registers[i];
 		*ER[i] = 0;
 		R[i] = (uint16_t*) ER[i];
 		E[i] = (uint16_t*) ER[i] + 1;
@@ -2945,11 +2940,73 @@ void initWalker(){
 	RTCFLG = &memory[0xf067];
 	*RTCFLG = 0;
 	interruptSavedAddress = 0;
+	interruptSavedFlags = (struct Flags_t){0};
 
 	quartersEllapsed = 0;
 	pc = entry;
+	initialized = true;
 
 }
+
+static bool readImage(const char* path, uint8_t* bytes, size_t expected,
+                      bool allowFullMemoryDump, char* error, size_t capacity){
+	FILE* file = path ? fopen(path, "rb") : NULL;
+	if (!file) {
+		snprintf(error, capacity, "Cannot open %s: %s", path ? path : "image", path ? strerror(errno) : "no path supplied");
+		return false;
+	}
+	if (fseek(file, 0, SEEK_END) != 0) {
+		snprintf(error, capacity, "Cannot read image size: %s", path);
+		fclose(file);
+		return false;
+	}
+	long length = ftell(file);
+	if (length != (long)expected && !(allowFullMemoryDump && length == MEM_SIZE)) {
+		snprintf(error, capacity, "%s has %ld bytes; expected %zu%s.", path, length, expected,
+		         allowFullMemoryDump ? " (or a 65536-byte memory dump)" : "");
+		fclose(file);
+		return false;
+	}
+	rewind(file);
+	bool ok = fread(bytes, 1, expected, file) == expected && !ferror(file);
+	if (fclose(file) != 0) ok = false;
+	if (!ok) snprintf(error, capacity, "Could not read the complete image: %s", path);
+	return ok;
+}
+
+bool initWalkerFromFiles(const char* romPath, const char* eepromPath, char* error, size_t capacity){
+	uint8_t rom[WALKER_ROM_SIZE];
+	uint8_t image[WALKER_EEPROM_SIZE];
+	if (capacity) error[0] = '\0';
+	if (!readImage(romPath, rom, sizeof(rom), true, error, capacity) ||
+	    !readImage(eepromPath, image, sizeof(image), false, error, capacity)) return false;
+	initializeWalkerImages(rom, image);
+	return true;
+}
+
+void initWalker(void){
+	char error[1024];
+#ifdef INIT_EEPROM
+	uint8_t rom[WALKER_ROM_SIZE], image[WALKER_EEPROM_SIZE];
+	memset(image, 0xff, sizeof(image));
+	if (readImage("rom.bin", rom, sizeof(rom), true, error, sizeof(error))) {
+		initializeWalkerImages(rom, image);
+		return;
+	}
+#else
+	if (initWalkerFromFiles("rom.bin", "eeprom.bin", error, sizeof(error))) return;
+#endif
+	fprintf(stderr, "%s\n", error);
+	exit(EXIT_FAILURE);
+}
+
+bool copyWalkerEEPROM(uint8_t* destination, size_t capacity){
+	if (!initialized || !destination || capacity < WALKER_EEPROM_SIZE) return false;
+	memcpy(destination, eeprom.memory, WALKER_EEPROM_SIZE);
+	return true;
+}
+
+uint16_t walkerProgramCounter(void){ return pc; }
 
 void halfRTCInterrupt(){
 	*RTCFLG |= _05SEIFG ;
@@ -2969,4 +3026,3 @@ void quarterRTCInterrupt(){
 		secondRTCInterrupt();
 	}
 }
-

@@ -8,6 +8,10 @@
 
 void addElement(struct Queue *queue, int value){
 	struct Element* newElement = malloc(sizeof(struct Element));
+	if (!newElement) {
+		fprintf(stderr, "Unable to allocate input event\n");
+		abort();
+	}
 	newElement->value = value;
 	newElement->next = NULL;
 	if(queue->last != NULL){
@@ -20,10 +24,12 @@ void addElement(struct Queue *queue, int value){
 }
 
 int popElement(struct Queue* queue){
+	if (!queue->first) return 0;
 	int value = queue->first->value;
 	struct Element* newFirst = queue->first->next;
 	free(queue->first);
 	queue->first = newFirst;
+	if (!newFirst) queue->last = NULL;
 	return value;
 }
 

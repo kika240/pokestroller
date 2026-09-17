@@ -9,3 +9,17 @@ bin/*
 *.bak
 *.txt
 *.bin
+
+# Local builds, private device dumps and emulator exports
+build/
+dist/
+private/
+*.rom
+*.eep
+*.eeprom
+*.sav
+*.dmp
+*.dump
+*.o
+*.dSYM/
+.DS_Store

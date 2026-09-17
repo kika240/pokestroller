@@ -1,0 +1,31 @@
+name: macOS
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synthetic core regressions with sanitizers
+        run: ./tests/run-tests.sh
+      - name: Build universal application and ZIP
+        run: ./build-macos.sh --package
+      - name: Verify architectures and archive
+        run: |
+          lipo -verify_arch arm64 x86_64 build/macos/PokeStroller.app/Contents/MacOS/PokeStroller
+          codesign --verify --strict build/macos/PokeStroller.app
+          cd dist
+          shasum -a 256 -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokeStroller-macOS
+          path: |
+            dist/PokeStroller-macOS.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
