@@ -13,7 +13,8 @@ for arch in "${architectures[@]}"; do
     case "$arch" in arm64|x86_64) ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac
     task_obj="$task_build_dir/$arch"
     mkdir -p "$task_obj"
-    task_cppflags=(-arch "$arch" -mmacosx-version-min=11.0 -std=c++23 -O2 -g
+    # Apple's Clang 15 recognizes C++23 under its draft spelling, c++2b.
+    task_cppflags=(-arch "$arch" -mmacosx-version-min=11.0 -std=c++2b -O2 -g
                    -fno-strict-aliasing -Ithird_party/pocketwalker -Isrc)
     task_objects=()
     while IFS= read -r source; do

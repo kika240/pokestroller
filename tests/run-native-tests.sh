@@ -3,7 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 task_dir="$(mktemp -d "${TMPDIR:-/tmp}/pokestroller-native.XXXXXX")"
 trap 'rm -rf "$task_dir"' EXIT
-task_flags=(-std=c++23 -O1 -g -fno-strict-aliasing -fno-omit-frame-pointer
+# Keep the C++23 spelling compatible with Apple's Clang 15.
+task_flags=(-std=c++2b -O1 -g -fno-strict-aliasing -fno-omit-frame-pointer
     -fsanitize=address,undefined -fno-sanitize-recover=all -Ithird_party/pocketwalker -Isrc)
 task_sources=()
 while IFS= read -r source; do task_sources+=("$source"); done < <(find third_party/pocketwalker/core -name '*.cpp')
